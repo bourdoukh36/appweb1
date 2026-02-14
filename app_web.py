@@ -14,10 +14,13 @@ SCOPE = ["https://spreadsheets.google.com/feeds",
          "https://www.googleapis.com/auth/drive"]
 
 
+import json
+
 @st.cache_resource
 def init_google_sheets():
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
-        r'C:\Users\hp\PycharmProjects\suivi des opérations\credentials.json', SCOPE
+    credentials_dict = json.loads(st.secrets["google"]["credentials"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(
+        credentials_dict, SCOPE
     )
     return gspread.authorize(creds)
 
