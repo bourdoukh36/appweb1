@@ -110,10 +110,13 @@ st.set_page_config(
 with st.sidebar:
     st.title("🌱 Pépinière")
     try:
-        logo = Image.open(r"C:\Users\hp\PycharmProjects\operations\logo.png")
+        # Chemin relatif par rapport au script
+        logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+        logo = Image.open(logo_path)
         st.image(logo, width=120)
-    except:
+    except Exception as e:
         st.markdown("### 🌱")
+        st.write(f"Logo introuvable : {e}")
 
     st.subheader("📦 Produits")
     produits = charger_produits()
