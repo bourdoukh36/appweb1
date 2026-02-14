@@ -2,10 +2,11 @@ import streamlit as st
 import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import pandas as pd
 from datetime import datetime
 import os
-import pandas as pd
 from PIL import Image
+import openpyxl
 
 # ---------- CONFIG ----------
 SCOPE = [
@@ -15,24 +16,22 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-SHEET_NAME = "suivi des opérations"  # Nom du fichier Google Sheet
-EXCEL_PRODUITS = "produits.xlsx"    # Fichier Excel local
-LOGO_FILE = "logo.png"              # Logo
+SHEET_NAME = "suivi des opérations"
+EXCEL_PRODUITS = "produits.xlsx"
+LOGO_FILE = "logo.png"
 
 SERRES = ['B', 'C', 'D', 'E', 'F', 'G', 'H']
 DELTAS = [str(i) for i in range(1, 33)]
-CULTURES = ['tomate', 'pastèque', 'poivron', 'concombre', 'laitue', 'ciboulette',
-            'courgette', 'herbes aromatiques']
-TRAITEMENTS = ['fongicide', 'insecticide', 'acaricide', 'insecticide/acaricide',
-              'raticide', 'bio-stimulant', 'désinfectant', 'engrais foliaire']
+CULTURES = ['tomate', 'pastèque', 'poivron', 'concombre', 'laitue', 'ciboulette', 'courgette', 'herbes aromatiques']
+TRAITEMENTS = ['fongicide', 'insecticide', 'acaricide', 'insecticide/acaricide', 'raticide', 'bio-stimulant',
+               'désinfectant', 'engrais foliaire']
 SOLUTIONS_IRRI = ['AB', 'CD', 'M', 'Urée', 'enracineur', 'désinfectant']
 ECS = ['1.6', '1.8', '2', '2.5', '3', '3.5', '4']
 
 # ---------- LOGO ----------
 logo_path = os.path.join(os.path.dirname(__file__), LOGO_FILE)
 if os.path.exists(logo_path):
-    logo = Image.open(logo_path)
-    st.image(logo, width=200)
+    st.image(Image.open(logo_path), width=200)
 else:
     st.warning(f"Logo introuvable : {LOGO_FILE}")
 
@@ -45,70 +44,72 @@ def init_google_sheets():
 
 client = init_google_sheets()
 
-# Vérifier que le fichier existe
 try:
     sheet = client.open(SHEET_NAME)
 except gspread.SpreadsheetNotFound:
     st.error(f"❌ Fichier Google Sheet '{SHEET_NAME}' introuvable ou accès refusé.")
     st.stop()
 
-# Lister tous les onglets
 worksheets = sheet.worksheets()
 worksheet_titles = [ws.title for ws in worksheets]
 
-# Sidebar : choisir onglet
+# Sidebar : choix de l’onglet
 st.sidebar.subheader("Sélection de l'onglet")
 selected_worksheet = st.sidebar.selectbox("Choisir un onglet", worksheet_titles)
 
-# ---------- AFFICHAGE DONNÉES SHEET ----------
 worksheet = sheet.worksheet(selected_worksheet)
-sheet_data = worksheet.get_all_records()
-df_sheet = pd.DataFrame(sheet_data)
+df_sheet = pd.DataFrame(worksheet.get_all_records())
 
-st.subheader(f"Données de l'onglet : {selected_worksheet}")
+# ---------- FILTRAGE ----------
+st.sidebar.subheader("Filtrer les données")
 
-# Sidebar : filtrer par serre si colonne existe
 if 'Serre' in df_sheet.columns:
-    st.sidebar.subheader("Filtrer par Serre")
-    selected_serre = st.sidebar.selectbox("Choisir une serre", ['Toutes'] + SERRES)
+    selected_serre = st.sidebar.selectbox("Serre", ['Toutes'] + SERRES)
     if selected_serre != 'Toutes':
         df_sheet = df_sheet[df_sheet['Serre'] == selected_serre]
 
+if 'Delta' in df_sheet.columns:
+    selected_delta = st.sidebar.selectbox("Delta", ['Tous'] + DELTAS)
+    if selected_delta != 'Tous':
+        df_sheet = df_sheet[df_sheet['Delta'] == selected_delta]
+
+if 'Opération' in df_sheet.columns:
+    selected_op = st.sidebar.selectbox("Opération", ['Toutes'] + df_sheet['Opération'].unique().tolist())
+    if selected_op != 'Toutes':
+        df_sheet = df_sheet[df_sheet['Opération'] == selected_op]
+
 # ---------- COLORATION ----------
+st.sidebar.subheader("Style du tableau")
+style_option = st.sidebar.radio("Colorer par :", ['Aucune', 'Culture', 'Traitement'])
+
 def color_culture(row):
     colors = {
-        'tomate': 'background-color: #ffcccc',
-        'pastèque': 'background-color: #ccffcc',
-        'poivron': 'background-color: #ffffcc',
-        'concombre': 'background-color: #ccffff',
-        'laitue': 'background-color: #e6ccff',
-        'ciboulette': 'background-color: #ffd9b3',
-        'courgette': 'background-color: #f2f2f2',
-        'herbes aromatiques': 'background-color: #ffe6cc'
+        'tomate': '#ffcccc',
+        'pastèque': '#ccffcc',
+        'poivron': '#ffffcc',
+        'concombre': '#ccffff',
+        'laitue': '#e6ccff',
+        'ciboulette': '#ffd9b3',
+        'courgette': '#f2f2f2',
+        'herbes aromatiques': '#ffe6cc'
     }
     if 'Culture' in row.index:
-        return [colors.get(row['Culture'], '')]*len(row)
-    else:
-        return ['']*len(row)
+        return [f'background-color: {colors.get(row["Culture"], "")}']*len(row)
+    return ['']*len(row)
 
 def color_traitement(row):
     colors = {
-        'fongicide': 'background-color: #ffcccc',
-        'insecticide': 'background-color: #ccffcc',
-        'acaricide': 'background-color: #ccccff',
-        'raticide': 'background-color: #ffffcc',
-        'bio-stimulant': 'background-color: #ccffff',
-        'désinfectant': 'background-color: #e6ccff',
-        'engrais foliaire': 'background-color: #ffd9b3'
+        'fongicide': '#ffcccc',
+        'insecticide': '#ccffcc',
+        'acaricide': '#ccccff',
+        'raticide': '#ffffcc',
+        'bio-stimulant': '#ccffff',
+        'désinfectant': '#e6ccff',
+        'engrais foliaire': '#ffd9b3'
     }
     if 'Traitement' in row.index:
-        return [colors.get(row['Traitement'], '')]*len(row)
-    else:
-        return ['']*len(row)
-
-# Sidebar : choix style
-st.sidebar.subheader("Style du tableau")
-style_option = st.sidebar.radio("Colorer par :", ['Aucune', 'Culture', 'Traitement'])
+        return [f'background-color: {colors.get(row["Traitement"], "")}']*len(row)
+    return ['']*len(row)
 
 if style_option == 'Culture':
     styled_df = df_sheet.style.apply(color_culture, axis=1)
@@ -117,13 +118,28 @@ elif style_option == 'Traitement':
 else:
     styled_df = df_sheet
 
+st.subheader(f"Données de l'onglet : {selected_worksheet}")
 st.dataframe(styled_df)
 
-# ---------- EXCEL PRODUITS ----------
+# ---------- AJOUT / MODIFICATION PRODUITS ----------
+st.subheader("Ajouter / Modifier un produit dans Excel")
+
 excel_path = os.path.join(os.path.dirname(__file__), EXCEL_PRODUITS)
 if os.path.exists(excel_path):
     df_produits = pd.read_excel(excel_path)
-    st.subheader("📊 Produits disponibles")
-    st.dataframe(df_produits)
 else:
-    st.warning(f"Fichier Excel introuvable : {EXCEL_PRODUITS}")
+    df_produits = pd.DataFrame(columns=['Produit', 'Quantité', 'Prix'])  # colonnes par défaut
+
+with st.form("produit_form"):
+    produit_name = st.text_input("Nom du produit")
+    quantite = st.number_input("Quantité", min_value=0, step=1)
+    prix = st.number_input("Prix", min_value=0.0, step=0.01)
+    submitted = st.form_submit_button("Enregistrer")
+    if submitted:
+        new_row = {'Produit': produit_name, 'Quantité': quantite, 'Prix': prix}
+        df_produits = pd.concat([df_produits, pd.DataFrame([new_row])], ignore_index=True)
+        df_produits.to_excel(excel_path, index=False)
+        st.success(f"Produit '{produit_name}' enregistré !")
+
+st.subheader("📊 Produits disponibles")
+st.dataframe(df_produits)
